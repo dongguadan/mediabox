@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/Resources">
+        <file>Resources/upload_normal_x2.png</file>
+    </qresource>
+</RCC>
