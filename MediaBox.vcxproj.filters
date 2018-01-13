@@ -71,6 +71,9 @@
     <ClCompile Include="GeneratedFiles\qrc_mediabox.cpp">
       <Filter>Generated Files</Filter>
     </ClCompile>
+    <ClCompile Include="ikcp.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="mediabox.h">
@@ -88,6 +91,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="FMFTNet.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ikcp.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

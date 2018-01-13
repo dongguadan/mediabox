@@ -3,6 +3,7 @@
 
 #include <winsock2.h>
 #include <string>
+#include "ikcp.h"
 using namespace std;
 
 #define FMFT_MTU   1400
@@ -15,13 +16,22 @@ public:
 	int Init(unsigned long long bufSize, unsigned long long rate, int mtu);
 	int Start(string remote, int remotePort, int localPort);
 	int Stop();
-public:
+private:
 	bool                    m_Running;
-	HANDLE                  m_hThread;
-	unsigned int            m_uThreadID;
 
-	static unsigned int WINAPI InitialThreadProc(void *pv);
-	unsigned long ThreadProc();
+	HANDLE                  m_hThreadSend;
+	unsigned int            m_uThreadIDSend;
+	static unsigned int WINAPI InitialThreadProcSend(void *pv);
+	unsigned long ThreadProcSend();
+
+	HANDLE                  m_hThreadRecv;
+	unsigned int            m_uThreadIDRecv;
+	static unsigned int WINAPI InitialThreadProcRecv(void *pv);
+	unsigned long ThreadProcRecv();
+
+	static int udp_output(const char *buffer, int len, IKCPCB *cb, void *user);
+	long handle_vnet_send(const char *buffer, long len);
+
 private:
 	unsigned long long m_bufSize;
 	unsigned long long m_rate;
@@ -33,7 +43,7 @@ private:
 	int                m_udp_local_port;
 	string             m_remote_host;
 	struct sockaddr_in m_udp_remoteAddr;
-
+	ikcpcb            *m_kcp;
 };
 
 #endif
