@@ -113,7 +113,7 @@ int FMFTNet::Init(unsigned long long bufSize, unsigned long long rate, int mtu)
 	return 0;
 }
 
-int FMFTNet::Start(string remote, int remotePort, int localPort)
+int FMFTNet::Start(string remote, int sniffPort, int remotePort, int localPort)
 {
 	WSADATA wsaData;
 	int err = WSAStartup(MAKEWORD(2, 2), &wsaData);
@@ -132,10 +132,13 @@ int FMFTNet::Start(string remote, int remotePort, int localPort)
 	struct hostent *phe;
 	memset(&m_udp_remoteAddr, 0, sizeof(m_udp_remoteAddr));
 	m_udp_remoteAddr.sin_family = AF_INET;
+	memset(&m_rudp_remoteAddr, 0, sizeof(m_rudp_remoteAddr));
+	m_rudp_remoteAddr.sin_family = AF_INET;
 
 	if (phe = gethostbyname(m_remote_host.c_str()))
 	{
 		memcpy(&m_udp_remoteAddr.sin_addr, phe->h_addr, phe->h_length);
+		memcpy(&m_rudp_remoteAddr.sin_addr, phe->h_addr, phe->h_length);
 	}
 	else if ((m_udp_remoteAddr.sin_addr.s_addr = inet_addr(m_remote_host.c_str())) == INADDR_NONE)
 	{
@@ -148,6 +151,7 @@ int FMFTNet::Start(string remote, int remotePort, int localPort)
 		return -1;
 	}
 	m_udp_remoteAddr.sin_port = htons(m_udp_remote_port);
+	m_rudp_remoteAddr.sin_port = htons(sniffPort);
 
 
 	if ((m_udp_socket = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
@@ -174,6 +178,7 @@ int FMFTNet::Start(string remote, int remotePort, int localPort)
 		fmft_log("FMFTNet connectUdp bind error\n");
 		return -1;
 	}
+	m_IsModify = false;
 	m_Running = true;
 	m_hThreadSend = (HANDLE)_beginthreadex(NULL, 0, InitialThreadProcSend, (void *)this, 0, &m_uThreadIDSend);
 	if (m_hThreadSend == NULL)
@@ -234,11 +239,18 @@ unsigned long FMFTNet::ThreadProcSend()
 
 	while ((m_Running == true) && (total < m_bufSize))
 	{
+		if (m_IsModify == true)
+		{
+			m_IsModify = false;
+			gettimeofday(&start, NULL);
+			index = 0;
+			continue;
+		}
 		unsigned long long sendSize = 0;
 		gettimeofday(&now, NULL);
 		if (USEC(&start, &now) < m_usecsPerPacket * index)
 		{
-
+			Sleep(1);
 		}
 		else
 		{
@@ -262,7 +274,6 @@ unsigned long FMFTNet::ThreadProcSend()
 				index++;
 			}
 		}
-
 	}
 
 	delete payload;
@@ -320,15 +331,15 @@ unsigned long FMFTNet::ThreadProcRecv()
 		return -1;
 	}
 
-#define FMFT_SNIFF "sniff"
-
 	int snd = m_kcp->nsnd_buf;
 	memset(log, 0, m_mtu);
 	sprintf(log, "ThreadProcRecv start wnd:%d\n", snd);
 	OutputDebugStringA(log);
 
-	int timeoutMax = 2;
-	int timeoutNum = 0;
+	struct timeval sniff_start;
+	struct timeval sniff_stop;
+	unsigned long long usecsPerPacket_bak = m_usecsPerPacket;
+	bool isBalance = false;
 
 	while (m_Running == true)
 	{
@@ -340,6 +351,8 @@ unsigned long FMFTNet::ThreadProcRecv()
 			memset(log, 0, m_mtu);
 			sprintf(log, "send content:%s, len:%d, snd:%d\n", FMFT_SNIFF, strlen(FMFT_SNIFF), snd);
 			OutputDebugStringA(log);
+
+			gettimeofday(&sniff_start, NULL);
 		}
 
 		FD_ZERO(&fds);
@@ -347,10 +360,6 @@ unsigned long FMFTNet::ThreadProcRecv()
 		int ret = select(m_udp_socket, &fds, NULL, NULL, &tv);
 		if (ret == 0)
 		{
-			if (timeoutNum++ >= timeoutMax)
-			{
-				OutputDebugStringA("Timeout..\n");
-			}
 			continue;
 		}
 		else if (ret == -1)
@@ -359,7 +368,6 @@ unsigned long FMFTNet::ThreadProcRecv()
 			break;
 		}
 
-		timeoutNum = 0;
 		int recvlen = recvfrom(m_udp_socket, byteRecv, m_mtu, 0, (struct sockaddr *)&remote, &addr_len);
 		if (recvlen > 0)
 		{
@@ -367,6 +375,31 @@ unsigned long FMFTNet::ThreadProcRecv()
 			memset(log, 0, m_mtu);
 			sprintf(log, "recv len:%d\n\n", recvlen);
 			OutputDebugStringA(log);
+
+			gettimeofday(&sniff_stop, NULL);
+			long long timediff = USEC(&sniff_start, &sniff_stop);
+			memset(log, 0, m_mtu);
+			sprintf(log, "timediff : %lld\n\n", timediff);
+			OutputDebugStringA(log);
+
+			if (isBalance == false)
+			{
+				if (timediff < FMFT_TIMEDIFF)
+				{
+					usecsPerPacket_bak = m_usecsPerPacket;
+					m_usecsPerPacket /= 2;
+				}
+				else
+				{
+					isBalance = true;
+					m_usecsPerPacket = usecsPerPacket_bak;
+				}
+				m_IsModify = true;
+				memset(log, 0, m_mtu);
+				sprintf(log, "m_usecsPerPacket : %lld\n\n", m_usecsPerPacket);
+				OutputDebugStringA(log);
+			}
+			Sleep(10000);
 		}
 		else
 		{
@@ -400,7 +433,7 @@ int FMFTNet::udp_output(const char *buffer, int len, IKCPCB *cb, void *user)
 
 long FMFTNet::handle_vnet_send(const char *buffer, long len)
 {
-	if (sendto(m_udp_socket, buffer, len, 0, (const struct sockaddr *)&m_udp_remoteAddr, sizeof(m_udp_remoteAddr)) < 0)
+	if (sendto(m_udp_socket, buffer, len, 0, (const struct sockaddr *)&m_rudp_remoteAddr, sizeof(m_rudp_remoteAddr)) < 0)
 	{
 		fmft_log("FMFTNet handle_vnet_send() error\n");
 		return -1;

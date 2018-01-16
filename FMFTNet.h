@@ -7,6 +7,9 @@
 using namespace std;
 
 #define FMFT_MTU   1400
+#define FMFT_SNIFF "sniff"
+#define FMFT_TIMEDIFF  150000  //us
+#define FMFT_TIMESNIFF 10000  //ms
 
 class FMFTNet
 {
@@ -14,7 +17,7 @@ public:
 	FMFTNet();
 	~FMFTNet();
 	int Init(unsigned long long bufSize, unsigned long long rate, int mtu);
-	int Start(string remote, int remotePort, int localPort);
+	int Start(string remote, int sniffPort, int remotePort, int localPort);
 	int Stop();
 private:
 	bool                    m_Running;
@@ -41,9 +44,13 @@ private:
 	int                m_udp_socket;
 	int                m_udp_remote_port;
 	int                m_udp_local_port;
+	int                m_rudp_remote_port;
 	string             m_remote_host;
 	struct sockaddr_in m_udp_remoteAddr;
+	struct sockaddr_in m_rudp_remoteAddr;
 	ikcpcb            *m_kcp;
+
+	bool              m_IsModify;
 };
 
 #endif
