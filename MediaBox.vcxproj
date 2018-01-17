@@ -139,7 +139,9 @@
   <ItemGroup>
     <ClCompile Include="CTranscodingWidget.cpp" />
     <ClCompile Include="CTransferWidget.cpp" />
+    <ClCompile Include="FMFTFunction.cpp" />
     <ClCompile Include="FMFTNet.cpp" />
+    <ClCompile Include="FMFTReliableBase.cpp" />
     <ClCompile Include="GeneratedFiles\Debug\moc_CTranscodingWidget.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
@@ -199,6 +201,8 @@
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="FMFTFunction.h" />
+    <ClInclude Include="FMFTReliableBase.h" />
     <ClInclude Include="ikcp.h" />
     <CustomBuild Include="CTranscodingWidget.h">
       <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(QTDIR)\bin\moc.exe;%(FullPath);$(QTDIR)\bin\moc.exe;%(FullPath);$(QTDIR)\bin\moc.exe;%(FullPath);$(QTDIR)\bin\moc.exe;%(FullPath)</AdditionalInputs>

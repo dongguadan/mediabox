@@ -4,7 +4,9 @@ c:\mediabox\release\ikcp.obj
 c:\mediabox\release\moc_mediabox.obj
 c:\mediabox\release\moc_ctransferwidget.obj
 c:\mediabox\release\moc_ctranscodingwidget.obj
+c:\mediabox\release\fmftreliablebase.obj
 c:\mediabox\release\fmftnet.obj
+c:\mediabox\release\fmftfunction.obj
 c:\mediabox\release\ctransferwidget.obj
 c:\mediabox\release\ctranscodingwidget.obj
 c:\mediabox\release\qrc_mediabox.obj

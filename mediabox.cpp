@@ -7,7 +7,7 @@
 #include <QPainter>
 #include <QtMath>
 
-#define BUFFERSIZE (1024*1024*1024*10)  //(((1BYTE * 1024)K * 1024)MB * 1024)GB * num
+#define TOTALSIZE (1024*1024*1024*1)  //(((1BYTE * 1024)K * 1024)MB * 1024)GB * num
 
 #define RATE (1*1024*1)    //(1Kb/S * 1024)Mb/S * num 
 #define MTU  (1*1400*1)    //(1BYTE * 1400)KB * num
@@ -91,7 +91,7 @@ void MediaBox::slotTransfer()
 		OutputDebugStringA("new FMFTNet() error\n");
 		return;
 	}
-	m_fmft_net->Init(BUFFERSIZE, RATE, MTU);
+	m_fmft_net->Init(TOTALSIZE, RATE, MTU);
 	m_fmft_net->Start(REMOTE, SNIFFPORT, REMOTEPORT, LOCALPORT);
 
 	return;

@@ -1,76 +1,10 @@
 #include "FMFTNet.h"
-
+#include "FMFTFunction.h"
 #include <windows.h>
 #include <time.h>
 #include <process.h> 
 
 #pragma comment(lib, "ws2_32.lib")
-
-#define USEC(st, fi) (((fi)->tv_sec-(st)->tv_sec)*1000000+((fi)->tv_usec-(st)->tv_usec))
-
-void fmft_log(char* message, ...){
-
-	char ThreadMessage[1024] = { 0 };
-	sprintf_s(ThreadMessage, "\nThreadID:%lu--", GetCurrentThreadId());
-	int ThreadMessageLen = strlen(ThreadMessage);
-
-	va_list vlArgs = NULL;
-	va_start(vlArgs, message);
-	size_t nLen = _vscprintf(message, vlArgs) + 1 + ThreadMessageLen;
-	char *strBuffer = new char[nLen];
-	if (strBuffer == NULL)
-	{
-		return;
-	}
-	_vsnprintf_s(strBuffer, nLen, nLen, message, vlArgs);
-	va_end(vlArgs);
-
-	memmove(strBuffer + ThreadMessageLen, strBuffer, nLen - ThreadMessageLen);
-	memcpy(strBuffer, ThreadMessage, ThreadMessageLen);
-	OutputDebugStringA(strBuffer);
-
-	delete[]strBuffer;
-}
-
-static int gettimeofday(struct timeval *tp, void *tzp)
-{
-	time_t clock;
-	struct tm tm;
-	SYSTEMTIME wtm;
-	GetLocalTime(&wtm);
-	tm.tm_year = wtm.wYear - 1900;
-	tm.tm_mon = wtm.wMonth - 1;
-	tm.tm_mday = wtm.wDay;
-	tm.tm_hour = wtm.wHour;
-	tm.tm_min = wtm.wMinute;
-	tm.tm_sec = wtm.wSecond;
-	clock = mktime(&tm);
-	tp->tv_sec = clock;
-	tp->tv_usec = wtm.wMilliseconds * 1000;
-	return 0;
-}
-
-static inline void itimeofday(long *sec, long *usec)
-{
-	struct timeval time;
-	gettimeofday(&time, NULL);
-	if (sec) *sec = time.tv_sec;
-	if (usec) *usec = time.tv_usec;
-}
-
-unsigned long long iclock64(void)
-{
-	long s, u;
-	unsigned long long value;
-	itimeofday(&s, &u);
-	value = ((unsigned long long)s) * 1000 + (u / 1000);
-	return value;
-}
-
-unsigned int iclock()
-{
-	return (unsigned int)(iclock64() & 0xfffffffful);
-}
 
 
 FMFTNet::FMFTNet()
@@ -103,13 +37,13 @@ FMFTNet::~FMFTNet()
 	OutputDebugStringA("~FMFTNet\n");
 }
 
-int FMFTNet::Init(unsigned long long bufSize, unsigned long long rate, int mtu)
+int FMFTNet::Init(unsigned long long totalSize, unsigned long long rate, int mtu)
 {
-	m_bufSize = bufSize;
+	m_totalSize = totalSize;
 	m_rate    = rate;
 	m_mtu     = mtu;
 	m_usecsPerPacket = 8 * m_mtu * 1000 / m_rate;
-	fmft_log("FMFTNet -- m_bufSize : %llu, m_rate : %lld, m_mtu : %d, m_usecsPerPacket : %lld\n", m_bufSize, m_rate, m_mtu, m_usecsPerPacket);
+	fmft_log("FMFTNet -- m_totalSize : %llu, m_rate : %lld, m_mtu : %d, m_usecsPerPacket : %lld\n", m_totalSize, m_rate, m_mtu, m_usecsPerPacket);
 	return 0;
 }
 
@@ -214,15 +148,8 @@ unsigned long FMFTNet::ThreadProcSend()
 	struct timeval start, now;
 	unsigned long long index = 0;
 	unsigned long long total = 0;
-	char *payload = (char *)malloc(sizeof(unsigned char) * m_mtu);
+	char *payload = (char *)malloc(sizeof(unsigned char) * FMFT_LEN);
 	if (payload == NULL)
-	{
-		fmft_log("FMFTNet malloc error\n");
-		return -1;
-	}
-
-	char *getload = (char *)malloc(sizeof(unsigned char) * m_mtu);
-	if (getload == NULL)
 	{
 		fmft_log("FMFTNet malloc error\n");
 		return -1;
@@ -237,50 +164,90 @@ unsigned long FMFTNet::ThreadProcSend()
 	timeout.tv_usec = 10;
 	fd_set rfd;
 
-	while ((m_Running == true) && (total < m_bufSize))
+	while ((m_Running == true) && (total < m_totalSize))
 	{
-		if (m_IsModify == true)
-		{
-			m_IsModify = false;
-			gettimeofday(&start, NULL);
-			index = 0;
-			continue;
-		}
 		unsigned long long sendSize = 0;
-		gettimeofday(&now, NULL);
-		if (USEC(&start, &now) < m_usecsPerPacket * index)
+		if ((total + FMFT_LEN) <= m_totalSize)
 		{
-			Sleep(1);
+			sendSize = FMFT_LEN;
 		}
 		else
 		{
-			if ((total + m_mtu) <= m_bufSize)
+			sendSize = m_totalSize - total;
+		}
+
+		m_rbudp = new CFMFTReliableBase();
+		if (m_rbudp == NULL)
+		{
+			fmft_log("FMFTNet m_rbudp error\n");
+			return -1;
+		}
+
+		if (m_rbudp->Init(payload, sendSize, m_rate, m_mtu) < 0)
+		{
+			fmft_log("FMFTNet m_rbudp Init error\n");
+			return -1;
+		}
+
+		unsigned long long packetTotal = 0;
+		while (m_Running == true)
+		{
+			if (m_IsModify == true)
 			{
-				sendSize = m_mtu;
-			}
-			else
-			{
-				sendSize = m_bufSize - total;
+				m_IsModify = false;
+				gettimeofday(&start, NULL);
+				index = 0;
+				continue;
 			}
 
-			if (sendto(m_udp_socket, payload, sendSize, 0, (const struct sockaddr *)&m_udp_remoteAddr, sizeof(m_udp_remoteAddr)) < 0)
+			gettimeofday(&now, NULL);
+			if (USEC(&start, &now) < m_usecsPerPacket * index)
 			{
-				fmft_log("FMFTNet sendto() error\n");
-				break;
+				Sleep(1);
 			}
 			else
 			{
-				total += sendSize;
-				index++;
+				/*********test********/
+				int packetSize = m_rbudp->GetPacket(payload, FMFT_LEN);
+				if (packetSize < 0)
+				{
+					fmft_log("FMFTNet GetPacket() error(%lld)\n", packetSize);
+					break;
+				}
+				else if (packetSize == 0)
+				{
+					fmft_log("FMFTNet GetPacket() finished\n");
+					total += sendSize;
+					break;
+				}
+
+				if (((packetTotal / packetSize) % 100) == 0)
+				{
+					m_rbudp->UpdateErrorMap(0);
+				}
+				/*********************/
+
+
+				if (sendto(m_udp_socket, payload, packetSize, 0, (const struct sockaddr *)&m_udp_remoteAddr, sizeof(m_udp_remoteAddr)) < 0)
+				{
+					fmft_log("FMFTNet sendto() error\n");
+					break;
+				}
+				else
+				{
+					index++;
+					packetTotal += packetSize;
+				}
 			}
 		}
+
+		fmft_log("sendSize : %lld, total : %lld\n", sendSize, total);
+		delete m_rbudp;
+		m_rbudp = NULL;
 	}
 
 	delete payload;
 	payload = NULL;
-
-	delete getload;
-	getload = NULL;
 
 	OutputDebugStringA("FMFTNet finish\n");
 	return 0;
