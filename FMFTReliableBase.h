@@ -4,6 +4,7 @@
 struct _rbudpHeader
 {
 	int seq;
+	int group;
 };
 
 class CFMFTReliableBase

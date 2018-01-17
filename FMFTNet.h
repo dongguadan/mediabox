@@ -9,7 +9,7 @@ using namespace std;
 
 #define FMFT_MTU   1400
 #define FMFT_SNIFF "sniff"
-#define FMFT_TIMEDIFF  150000  //us
+#define FMFT_TIMEDIFF  120000  //us
 #define FMFT_TIMESNIFF 10000  //ms
 #define FMFT_LEN   (1024*256)
 
@@ -28,6 +28,7 @@ private:
 	unsigned int            m_uThreadIDSend;
 	static unsigned int WINAPI InitialThreadProcSend(void *pv);
 	unsigned long ThreadProcSend();
+	unsigned long PacketSend(unsigned long long PacketSize);
 
 	HANDLE                  m_hThreadRecv;
 	unsigned int            m_uThreadIDRecv;
@@ -36,6 +37,13 @@ private:
 
 	static int udp_output(const char *buffer, int len, IKCPCB *cb, void *user);
 	long handle_vnet_send(const char *buffer, long len);
+
+private:
+	unsigned long long GetUsecsPerPacket();
+	unsigned long long SetUsecsPerPacket(unsigned long long usecsPerPacket);
+
+	bool GetModifyStatus();
+	int  SetModifyStatus(bool status);
 
 private:
 	unsigned long long m_totalSize;

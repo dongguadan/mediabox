@@ -114,6 +114,7 @@ int FMFTNet::Start(string remote, int sniffPort, int remotePort, int localPort)
 	}
 	m_IsModify = false;
 	m_Running = true;
+
 	m_hThreadSend = (HANDLE)_beginthreadex(NULL, 0, InitialThreadProcSend, (void *)this, 0, &m_uThreadIDSend);
 	if (m_hThreadSend == NULL)
 	{
@@ -145,24 +146,8 @@ unsigned int FMFTNet::InitialThreadProcSend(void *pv)
 
 unsigned long FMFTNet::ThreadProcSend()
 {
-	struct timeval start, now;
-	unsigned long long index = 0;
 	unsigned long long total = 0;
-	char *payload = (char *)malloc(sizeof(unsigned char) * FMFT_LEN);
-	if (payload == NULL)
-	{
-		fmft_log("FMFTNet malloc error\n");
-		return -1;
-	}
-
 	OutputDebugStringA("FMFTNet start\n");
-
-	gettimeofday(&start, NULL);
-
-	timeval timeout;
-	timeout.tv_sec = 0;
-	timeout.tv_usec = 10;
-	fd_set rfd;
 
 	while ((m_Running == true) && (total < m_totalSize))
 	{
@@ -176,81 +161,116 @@ unsigned long FMFTNet::ThreadProcSend()
 			sendSize = m_totalSize - total;
 		}
 
-		m_rbudp = new CFMFTReliableBase();
-		if (m_rbudp == NULL)
+		int len = PacketSend(sendSize);
+		if (len >= 0)
 		{
-			fmft_log("FMFTNet m_rbudp error\n");
-			return -1;
+			total += len;
 		}
 
-		if (m_rbudp->Init(payload, sendSize, m_rate, m_mtu) < 0)
+		fmft_log("FMFTNet total : %lld\n", total);
+	}
+
+	OutputDebugStringA("FMFTNet finish\n");
+	return 0;
+}
+
+unsigned long FMFTNet::PacketSend(unsigned long long PacketSize)
+{
+	if (PacketSize <= 0)
+	{
+		fmft_log("FMFTNet PacketSend param error\n");
+		return -1;
+	}
+
+	struct timeval start, now;
+	unsigned long long packetTotal = 0;
+	char *payload = (char *)malloc(sizeof(unsigned char) * PacketSize);
+	if (payload == NULL)
+	{
+		fmft_log("FMFTNet malloc error\n");
+		return -1;
+	}
+
+	timeval timeout;
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 10;
+	fd_set rfd;
+
+	m_rbudp = new CFMFTReliableBase();
+	if (m_rbudp == NULL)
+	{
+		fmft_log("FMFTNet m_rbudp error\n");
+		return -1;
+	}
+
+	if (m_rbudp->Init(payload, PacketSize, m_rate, m_mtu) < 0)
+	{
+		fmft_log("FMFTNet m_rbudp Init error\n");
+		return -1;
+	}
+
+	long long total = 0;
+	unsigned long long index = 0;
+	gettimeofday(&start, NULL);
+	while (m_Running == true)
+	{
+		if (GetModifyStatus() == true)
 		{
-			fmft_log("FMFTNet m_rbudp Init error\n");
-			return -1;
+			SetModifyStatus(false);
+			gettimeofday(&start, NULL);
+			index = 0;
+			continue;
 		}
 
-		unsigned long long packetTotal = 0;
-		while (m_Running == true)
+		gettimeofday(&now, NULL);
+		if (USEC(&start, &now) < (GetUsecsPerPacket() * index))
 		{
-			if (m_IsModify == true)
+			Sleep(1);
+		}
+		else
+		{
+			int packetSize = m_rbudp->GetPacket(payload, FMFT_LEN);
+			if (packetSize < 0)
 			{
-				m_IsModify = false;
-				gettimeofday(&start, NULL);
-				index = 0;
-				continue;
+				fmft_log("FMFTNet GetPacket() error(%lld)\n", packetSize);
+				packetTotal = -1;
+				break;
+			}
+			else if (packetSize == 0)
+			{
+				fmft_log("FMFTNet GetPacket() finished\n");
+				packetTotal = PacketSize;
+				break;
 			}
 
-			gettimeofday(&now, NULL);
-			if (USEC(&start, &now) < m_usecsPerPacket * index)
+			if (((total / packetSize) % 50) == 0)
 			{
-				Sleep(1);
+				m_rbudp->UpdateErrorMap(0);
+			}
+
+
+			if (sendto(m_udp_socket, payload, packetSize, 0, (const struct sockaddr *)&m_udp_remoteAddr, sizeof(m_udp_remoteAddr)) < 0)
+			{
+				fmft_log("FMFTNet sendto() error\n");
+				packetTotal = -1;
+				break;
 			}
 			else
 			{
-				/*********test********/
-				int packetSize = m_rbudp->GetPacket(payload, FMFT_LEN);
-				if (packetSize < 0)
-				{
-					fmft_log("FMFTNet GetPacket() error(%lld)\n", packetSize);
-					break;
-				}
-				else if (packetSize == 0)
-				{
-					fmft_log("FMFTNet GetPacket() finished\n");
-					total += sendSize;
-					break;
-				}
-
-				if (((packetTotal / packetSize) % 100) == 0)
-				{
-					m_rbudp->UpdateErrorMap(0);
-				}
-				/*********************/
-
-
-				if (sendto(m_udp_socket, payload, packetSize, 0, (const struct sockaddr *)&m_udp_remoteAddr, sizeof(m_udp_remoteAddr)) < 0)
-				{
-					fmft_log("FMFTNet sendto() error\n");
-					break;
-				}
-				else
-				{
-					index++;
-					packetTotal += packetSize;
-				}
+				index++;
+				total += packetSize;
 			}
 		}
-
-		fmft_log("sendSize : %lld, total : %lld\n", sendSize, total);
-		delete m_rbudp;
-		m_rbudp = NULL;
 	}
+
+	fmft_log("PacketSend : %lld, packetTotal : %lld\n", PacketSize, packetTotal);
+	delete m_rbudp;
+	m_rbudp = NULL;
 
 	delete payload;
 	payload = NULL;
 
-	OutputDebugStringA("FMFTNet finish\n");
-	return 0;
+	return packetTotal;
 }
 
 unsigned int FMFTNet::InitialThreadProcRecv(void *pv)
@@ -305,7 +325,7 @@ unsigned long FMFTNet::ThreadProcRecv()
 
 	struct timeval sniff_start;
 	struct timeval sniff_stop;
-	unsigned long long usecsPerPacket_bak = m_usecsPerPacket;
+	unsigned long long usecsPerPacket_bak = GetUsecsPerPacket();
 	bool isBalance = false;
 
 	while (m_Running == true)
@@ -353,17 +373,17 @@ unsigned long FMFTNet::ThreadProcRecv()
 			{
 				if (timediff < FMFT_TIMEDIFF)
 				{
-					usecsPerPacket_bak = m_usecsPerPacket;
-					m_usecsPerPacket /= 2;
+					usecsPerPacket_bak = GetUsecsPerPacket();
+					SetUsecsPerPacket((usecsPerPacket_bak / 2));
 				}
 				else
 				{
 					isBalance = true;
-					m_usecsPerPacket = usecsPerPacket_bak;
+					SetUsecsPerPacket(usecsPerPacket_bak);
 				}
-				m_IsModify = true;
+				SetModifyStatus(true);
 				memset(log, 0, m_mtu);
-				sprintf(log, "m_usecsPerPacket : %lld\n\n", m_usecsPerPacket);
+				sprintf(log, "m_usecsPerPacket : %lld\n\n", GetUsecsPerPacket());
 				OutputDebugStringA(log);
 			}
 			Sleep(10000);
@@ -405,5 +425,27 @@ long FMFTNet::handle_vnet_send(const char *buffer, long len)
 		fmft_log("FMFTNet handle_vnet_send() error\n");
 		return -1;
 	}
+	return 0;
+}
+
+unsigned long long FMFTNet::GetUsecsPerPacket()
+{
+	return m_usecsPerPacket;
+}
+
+unsigned long long FMFTNet::SetUsecsPerPacket(unsigned long long usecsPerPacket)
+{
+	m_usecsPerPacket = usecsPerPacket;
+	return 0;
+}
+
+bool FMFTNet::GetModifyStatus()
+{
+	return m_IsModify;
+}
+
+int  FMFTNet::SetModifyStatus(bool status)
+{
+	m_IsModify = status;
 	return 0;
 }

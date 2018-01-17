@@ -233,6 +233,7 @@ int CFMFTReliableBase::GetPacket(char *buffer, int bufSize)
 	}
 
 	m_sendHeader.seq = m_hashTable[m_cursor];
+	m_sendHeader.group = 0;
 	memcpy(buffer, &m_sendHeader, m_headerSize);
 	memcpy(buffer + m_headerSize, (char*)((char*)m_mainBuffer + (m_sendHeader.seq * m_payloadSize)), actualPayloadSize);
 
@@ -260,7 +261,7 @@ int CFMFTReliableBase::UpdateErrorMap(long long seq)
 	updateErrorBitmap(seq);
 	m_remainNumberOfPackets = updateHashTable();
 
-	fmft_log("CFMFTReliableBase::UpdateErrorMap : seq(%d)\n", seq);
-	fmft_log("CFMFTReliableBase::UpdateErrorMap : m_remainNumberOfPackets(%d)\n", m_remainNumberOfPackets);
+	//fmft_log("CFMFTReliableBase::UpdateErrorMap : seq(%d)\n", seq);
+	//fmft_log("CFMFTReliableBase::UpdateErrorMap : m_remainNumberOfPackets(%d)\n", m_remainNumberOfPackets);
 	return 0;
 }
