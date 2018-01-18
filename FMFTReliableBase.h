@@ -12,8 +12,12 @@ class CFMFTReliableBase
 public:
 	CFMFTReliableBase();
 	~CFMFTReliableBase();
-	int Init(char * buffer, int bufSize, int sendRate, int packetSize);
+	int Init(int group, char * buffer, int bufSize, int sendRate, int packetSize);
 	int GetPacket(char *buffer, int bufSize);
+	int GetCursor();
+	int GetID();
+	bool GetStatus();
+	int GetRemainNumberOfPackets();
 	int UpdateErrorMap(long long seq);
 private:
 	char    *m_mainBuffer;
@@ -30,6 +34,8 @@ private:
 	int     m_udpSockBufSize;
 
 	int     m_cursor;
+	int     m_group;
+	int     m_running;
 
 	long long    *m_hashTable;
 	char         *m_errorBitmap;

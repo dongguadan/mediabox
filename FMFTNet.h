@@ -3,6 +3,7 @@
 
 #include <winsock2.h>
 #include <string>
+#include <map>
 #include "ikcp.h"
 #include "FMFTReliableBase.h"
 using namespace std;
@@ -39,6 +40,13 @@ private:
 	bool GetModifyStatus();
 	int  SetModifyStatus(bool status);
 
+	CFMFTReliableBase* GetRBUDP();
+	CFMFTReliableBase* GetRBUDP(int id);
+	int InsertRBUDP(int id, CFMFTReliableBase* pRBUDP);
+	int RemoveRBUDP(int id);
+
+	int  ProcessSniff();
+
 private:
 	unsigned long long m_totalSize;
 	unsigned long long m_rate;
@@ -55,8 +63,12 @@ private:
 	ikcpcb            *m_kcp;
 
 	CFMFTReliableBase *m_rbudp;
-
+	map<int, CFMFTReliableBase*> m_rbudp_map;
 	bool              m_IsModify;
+	struct timeval    m_sniff_start;
+	struct timeval    m_sniff_stop;
+
+
 };
 
 #endif

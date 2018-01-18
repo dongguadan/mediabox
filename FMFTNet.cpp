@@ -107,6 +107,8 @@ int FMFTNet::Start(string remote, int sniffPort, int remotePort, int localPort)
 	}
 	m_IsModify = false;
 	m_Running = true;
+	gettimeofday(&m_sniff_start, NULL);
+	gettimeofday(&m_sniff_stop, NULL);
 
 	m_hThread = (HANDLE)_beginthreadex(NULL, 0, InitialThreadProc, (void *)this, 0, &m_uThreadID);
 	if (m_hThread == NULL)
@@ -182,7 +184,7 @@ unsigned long FMFTNet::ThreadProc()
 	m_kcp = ikcp_create(1, this);
 	if (m_kcp == NULL)
 	{
-		OutputDebugStringA("ThreadProc ikcp_create error\n");
+		OutputDebugStringA("FMFTNet::ThreadProc ikcp_create error\n");
 		return -1;
 	}
 	m_kcp->output = FMFTNet::udp_output;
@@ -197,39 +199,43 @@ unsigned long FMFTNet::ThreadProc()
 	tv.tv_usec = 10;
 	if (setsockopt(m_udp_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv)) < 0)
 	{
-		OutputDebugStringA("ThreadProc socket option error\n");
+		OutputDebugStringA("FMFTNet::ThreadProc socket option error\n");
 		return -1;
 	}
 
-	struct timeval sniff_start;
-	struct timeval sniff_stop;
-	gettimeofday(&sniff_start, NULL);
-	gettimeofday(&sniff_stop, NULL);
-	long long timesniff = 0;
+	OutputDebugStringA("FMFTNet::ThreadProc start\n");
+
+	m_rbudp = new CFMFTReliableBase();
+	if (m_rbudp == NULL)
+	{
+		OutputDebugStringA("FMFTNet::ThreadProc m_rbudp error\n");
+		return -1;
+	}
+
+	char *group = (char *)malloc(sizeof(char) * FMFT_LEN);
+	if (group == NULL)
+	{
+		OutputDebugStringA("FMFTNet::ThreadProc group malloc error\n");
+		return -1;
+	}
+
+	if (m_rbudp->Init(0, group, FMFT_LEN, m_rate, m_mtu) < 0)
+	{
+		OutputDebugStringA("FMFTNet::ThreadProc m_rbudp init error\n");
+		return -1;
+	}
+
+	InsertRBUDP(m_rbudp->GetID(), m_rbudp);
+
+	ProcessSniff();
 
 	unsigned long long index = 0;
 	struct timeval start;
 	struct timeval now;
 	gettimeofday(&start, NULL);
 
-	OutputDebugStringA("ThreadProc start\n");
-
 	while (m_Running == true)
 	{
-		ikcp_update(m_kcp, iclock());
-		gettimeofday(&sniff_stop, NULL);
-		timesniff = USEC(&sniff_start, &sniff_stop);
-		if (timesniff > FMFT_TIMESNIFF)
-		{
-			gettimeofday(&sniff_start, NULL);
-			int snd = m_kcp->nsnd_buf;
-			if (snd <= 0)
-			{
-				ikcp_send(m_kcp, FMFT_SNIFF, strlen(FMFT_SNIFF));
-				fmft_log("send content:%s, len:%d, snd:%d\n", FMFT_SNIFF, strlen(FMFT_SNIFF), snd);
-			}
-		}
-
 		FD_ZERO(&read_fdset);
 		FD_SET(m_udp_socket, &read_fdset);
 		FD_ZERO(&write_fdset);
@@ -242,7 +248,7 @@ unsigned long FMFTNet::ThreadProc()
 		}
 		else if (ret == -1)
 		{
-			OutputDebugStringA("ThreadProc select error\n");
+			OutputDebugStringA("FMFTNet::ThreadProc select error\n");
 			break;
 		}
 
@@ -253,7 +259,7 @@ unsigned long FMFTNet::ThreadProc()
 			if (recvlen > 0)
 			{
 				ikcp_input(m_kcp, byteRecv, recvlen);
-				fmft_log("recv len : %d\n\n", recvlen);
+				fmft_log("FMFTNet::ThreadProc recv len : %d\n\n", recvlen);
 			}
 		}
 
@@ -266,10 +272,47 @@ unsigned long FMFTNet::ThreadProc()
 			}
 			else
 			{
-				char byteSend[1400] = { 0 };
-				if (sendto(m_udp_socket, byteSend, sizeof(byteSend), 0, (const struct sockaddr *)&m_udp_remoteAddr, sizeof(m_udp_remoteAddr)) < 0)
+				/* simulate the server response */
+				bool find = false;
+				for (int i = 0; i < 2; i++)
 				{
-					OutputDebugStringA("ThreadProc sendto() error\n");
+					m_rbudp = GetRBUDP(i);
+					if (m_rbudp == NULL)
+					{
+						continue;
+					}
+					find = true;
+					if (m_rbudp->GetCursor() == 0)
+					{
+						m_rbudp->UpdateErrorMap(0);
+					}
+					break;
+				}
+				if (find == false)
+				{
+					OutputDebugStringA("FMFTNet::ThreadProc all finished\n");
+					break;
+				}
+				/********************************/
+
+				m_rbudp = GetRBUDP();
+				if (m_rbudp == NULL)
+				{
+					continue;
+				}
+
+				int packetlen = m_rbudp->GetPacket(group, FMFT_LEN);
+				if (packetlen <= 0)
+				{
+					int id = m_rbudp->GetID();
+					RemoveRBUDP(id);
+					fmft_log("FMFTNet::ThreadProc m_rbudp(%d) finished\n", id);
+					continue;
+				}
+
+				if (sendto(m_udp_socket, group, packetlen, 0, (const struct sockaddr *)&m_udp_remoteAddr, sizeof(m_udp_remoteAddr)) < 0)
+				{
+					OutputDebugStringA("FMFTNet::ThreadProc sendto() error\n");
 					break;
 				}
 				else
@@ -280,8 +323,146 @@ unsigned long FMFTNet::ThreadProc()
 		}
 	}
 
-	OutputDebugStringA("ThreadProc stop\n");
+	OutputDebugStringA("FMFTNet::ThreadProc stop\n");
 
 	ikcp_release(m_kcp);
+
+	return 0;
+}
+
+int  FMFTNet::ProcessSniff()
+{
+	struct sockaddr_in remote;
+	int addr_len = sizeof(struct sockaddr_in);
+	fd_set read_fdset;
+	fd_set write_fdset;
+	struct timeval tv;
+	tv.tv_sec = 0;
+	tv.tv_usec = 1000;
+
+	int trySum = 5;
+	int tryNum = 0;
+
+	int sniffLen = m_mtu / 2;
+	char *byteSniff = (char *)malloc(sizeof(char) * sniffLen);
+	if (byteSniff == NULL)
+	{
+		OutputDebugStringA("FMFTNet::ProcessSniff malloc error\n");
+		return -1;
+	}
+	memset(byteSniff, 0, sniffLen);
+
+	char *byteRecv = (char *)malloc(sizeof(char) * m_mtu);
+	if (byteRecv == NULL)
+	{
+		OutputDebugStringA("FMFTNet::ProcessSniff malloc error\n");
+		return -1;
+	}
+	memset(byteRecv, 0, m_mtu);
+
+	while (true)
+	{
+		ikcp_update(m_kcp, iclock());
+		FD_ZERO(&read_fdset);
+		FD_SET(m_udp_socket, &read_fdset);
+		FD_ZERO(&write_fdset);
+		FD_SET(m_udp_socket, &write_fdset);
+
+		int ret = select(m_udp_socket + 1, &read_fdset, &write_fdset, NULL, &tv);
+		if (ret == 0)
+		{
+			continue;
+		}
+		else if (ret == -1)
+		{
+			OutputDebugStringA("FMFTNet::ProcessSniff select error\n");
+			break;
+		}
+
+		if (FD_ISSET(m_udp_socket, &read_fdset))
+		{
+			int recvlen = recvfrom(m_udp_socket, byteRecv, m_mtu, 0, (struct sockaddr *)&remote, &addr_len);
+			if (recvlen > 0)
+			{
+				fmft_log("FMFTNet::ProcessSniff recv len : %d\n", recvlen);
+
+				ikcp_input(m_kcp, byteRecv, recvlen);
+				gettimeofday(&m_sniff_stop, NULL);
+				unsigned long long timediff = USEC(&m_sniff_start, &m_sniff_stop);
+				fmft_log("FMFTNet::ProcessSniff m_sniff_start : %lld, m_sniff_stop : %lld, timediff : %lld\n\n", m_sniff_start, m_sniff_stop, timediff);
+				tryNum++;
+				if (tryNum >= trySum)
+				{
+					break;
+				}
+				Sleep(1000);
+			}
+		}
+
+		if (FD_ISSET(m_udp_socket, &write_fdset))
+		{
+			int sndbuf = m_kcp->nsnd_buf;
+			int sndque = m_kcp->nsnd_que;
+			if ((sndbuf <= 0) && (sndque <= 0))
+			{
+				ikcp_send(m_kcp, byteSniff, sniffLen);
+				fmft_log("FMFTNet::ProcessSniff send len : %d\n", sniffLen);
+				gettimeofday(&m_sniff_start, NULL);
+			}
+		}
+	}
+
+	delete byteRecv;
+	byteRecv = NULL;
+	delete byteSniff;
+	byteSniff = NULL;
+
+	return 0;
+}
+
+CFMFTReliableBase* FMFTNet::GetRBUDP()
+{
+	CFMFTReliableBase *pRBUDP = NULL;
+	map<int, CFMFTReliableBase*>::iterator iter;
+	for (iter = m_rbudp_map.begin(); iter != m_rbudp_map.end(); iter++)
+	{
+		if (iter->second->GetStatus() == true)
+		{
+			pRBUDP = iter->second;
+			break;
+		}
+	}
+	return pRBUDP;
+}
+
+CFMFTReliableBase* FMFTNet::GetRBUDP(int id)
+{
+	CFMFTReliableBase *pRBUDP = NULL;
+	map<int, CFMFTReliableBase*>::iterator iter = m_rbudp_map.find(id);
+	if (iter != m_rbudp_map.end())
+	{
+		pRBUDP = iter->second;
+	}
+	return pRBUDP;
+}
+
+int FMFTNet::InsertRBUDP(int id, CFMFTReliableBase* pRBUDP)
+{
+	m_rbudp_map[id] = pRBUDP;
+	return 0;
+}
+
+int FMFTNet::RemoveRBUDP(int id)
+{
+	CFMFTReliableBase *pRBUDP = NULL;
+	map<int, CFMFTReliableBase*>::iterator iter = m_rbudp_map.find(id);
+	if (iter != m_rbudp_map.end())
+	{
+		pRBUDP = iter->second;
+		m_rbudp_map.erase(iter);
+		delete pRBUDP;
+		pRBUDP = NULL;
+	}
+
 	return 0;
 }

@@ -21,7 +21,7 @@ CFMFTReliableBase::~CFMFTReliableBase()
 	return;
 }
 
-int CFMFTReliableBase::Init(char * buffer, int bufSize, int sendRate, int packetSize)
+int CFMFTReliableBase::Init(int group, char * buffer, int bufSize, int sendRate, int packetSize)
 {
 	m_mainBuffer = (char *)malloc(bufSize * sizeof(char));
 	if (m_mainBuffer == NULL)
@@ -31,6 +31,7 @@ int CFMFTReliableBase::Init(char * buffer, int bufSize, int sendRate, int packet
 	}
 	memcpy(m_mainBuffer, buffer, bufSize);
 
+	m_group = group;
 	m_dataSize = bufSize;
 	m_sendRate = sendRate;
 	m_payloadSize = packetSize;
@@ -63,6 +64,8 @@ int CFMFTReliableBase::Init(char * buffer, int bufSize, int sendRate, int packet
 	}
 
 	initErrorBitmap();
+
+	m_running = true;
 
 	return 0;
 }
@@ -233,7 +236,7 @@ int CFMFTReliableBase::GetPacket(char *buffer, int bufSize)
 	}
 
 	m_sendHeader.seq = m_hashTable[m_cursor];
-	m_sendHeader.group = 0;
+	m_sendHeader.group = m_group;
 	memcpy(buffer, &m_sendHeader, m_headerSize);
 	memcpy(buffer + m_headerSize, (char*)((char*)m_mainBuffer + (m_sendHeader.seq * m_payloadSize)), actualPayloadSize);
 
@@ -243,16 +246,27 @@ int CFMFTReliableBase::GetPacket(char *buffer, int bufSize)
 	if (m_cursor >= m_remainNumberOfPackets)
 	{
 		m_cursor = 0;
+		m_running = false;
 	}
 
 	return len;
+}
+
+int CFMFTReliableBase::GetRemainNumberOfPackets()
+{
+	return m_remainNumberOfPackets;
+}
+
+int CFMFTReliableBase::GetCursor()
+{
+	return m_cursor;
 }
 
 int CFMFTReliableBase::UpdateErrorMap(long long seq)
 {
 	if (seq >= m_remainNumberOfPackets)
 	{
-		fmft_log("CFMFTReliableBase::UpdateErrorMap\n");
+		fmft_log("CFMFTReliableBase::UpdateErrorMap error group(%d)\n", m_group);
 		return -1;
 	}
 
@@ -261,7 +275,19 @@ int CFMFTReliableBase::UpdateErrorMap(long long seq)
 	updateErrorBitmap(seq);
 	m_remainNumberOfPackets = updateHashTable();
 
-	//fmft_log("CFMFTReliableBase::UpdateErrorMap : seq(%d)\n", seq);
-	//fmft_log("CFMFTReliableBase::UpdateErrorMap : m_remainNumberOfPackets(%d)\n", m_remainNumberOfPackets);
+	fmft_log("CFMFTReliableBase::UpdateErrorMap : group(%d)\n", m_group);
+	fmft_log("CFMFTReliableBase::UpdateErrorMap : seq(%d)\n", seq);
+	fmft_log("CFMFTReliableBase::UpdateErrorMap : m_remainNumberOfPackets(%d)\n\n", m_remainNumberOfPackets);
+	m_running = true;
 	return 0;
+}
+
+int CFMFTReliableBase::GetID()
+{
+	return m_group;
+}
+
+bool CFMFTReliableBase::GetStatus()
+{
+	return m_running;
 }
