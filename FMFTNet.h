@@ -13,6 +13,7 @@ using namespace std;
 #define FMFT_TIMEDIFF  (120*1000)  //us
 #define FMFT_TIMESNIFF (10*1000*1000)  //us
 #define FMFT_LEN   (1024*256)
+#define FMFT_PACKET_MAX_NUM  4
 
 class FMFTNet
 {
@@ -68,7 +69,7 @@ private:
 	struct timeval    m_sniff_start;
 	struct timeval    m_sniff_stop;
 
-
+	int  m_group;
 };
 
 #endif

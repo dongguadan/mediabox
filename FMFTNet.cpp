@@ -107,6 +107,7 @@ int FMFTNet::Start(string remote, int sniffPort, int remotePort, int localPort)
 	}
 	m_IsModify = false;
 	m_Running = true;
+	m_group = 0;
 	gettimeofday(&m_sniff_start, NULL);
 	gettimeofday(&m_sniff_stop, NULL);
 
@@ -205,27 +206,12 @@ unsigned long FMFTNet::ThreadProc()
 
 	OutputDebugStringA("FMFTNet::ThreadProc start\n");
 
-	m_rbudp = new CFMFTReliableBase();
-	if (m_rbudp == NULL)
-	{
-		OutputDebugStringA("FMFTNet::ThreadProc m_rbudp error\n");
-		return -1;
-	}
-
 	char *group = (char *)malloc(sizeof(char) * FMFT_LEN);
 	if (group == NULL)
 	{
 		OutputDebugStringA("FMFTNet::ThreadProc group malloc error\n");
 		return -1;
 	}
-
-	if (m_rbudp->Init(0, group, FMFT_LEN, m_rate, m_mtu) < 0)
-	{
-		OutputDebugStringA("FMFTNet::ThreadProc m_rbudp init error\n");
-		return -1;
-	}
-
-	InsertRBUDP(m_rbudp->GetID(), m_rbudp);
 
 	ProcessSniff();
 
@@ -236,6 +222,26 @@ unsigned long FMFTNet::ThreadProc()
 
 	while (m_Running == true)
 	{
+		if (m_rbudp_map.size() < FMFT_PACKET_MAX_NUM)
+		{
+			fmft_log("insert gropu : %d\n", m_group);
+			m_rbudp = new CFMFTReliableBase();
+			if (m_rbudp == NULL)
+			{
+				OutputDebugStringA("FMFTNet::ThreadProc m_rbudp error\n");
+				return -1;
+			}
+
+			if (m_rbudp->Init(m_group, group, FMFT_LEN, m_rate, m_mtu) < 0)
+			{
+				OutputDebugStringA("FMFTNet::ThreadProc m_rbudp init error\n");
+				return -1;
+			}
+
+			InsertRBUDP(m_rbudp->GetID(), m_rbudp);
+			m_group++;
+		}
+
 		FD_ZERO(&read_fdset);
 		FD_SET(m_udp_socket, &read_fdset);
 		FD_ZERO(&write_fdset);
@@ -274,7 +280,7 @@ unsigned long FMFTNet::ThreadProc()
 			{
 				/* simulate the server response */
 				bool find = false;
-				for (int i = 0; i < 2; i++)
+				for (int i = 0; i <= m_group; i++)
 				{
 					m_rbudp = GetRBUDP(i);
 					if (m_rbudp == NULL)
@@ -284,6 +290,10 @@ unsigned long FMFTNet::ThreadProc()
 					find = true;
 					if (m_rbudp->GetCursor() == 0)
 					{
+						unsigned long long timediff = USEC(&start, &now);
+						fmft_log("index:%lld\n", index);
+						fmft_log("timediff:%lld\n", timediff);
+						fmft_log("UsecsPerPacket:%lld\n", GetUsecsPerPacket());
 						m_rbudp->UpdateErrorMap(0);
 					}
 					break;
