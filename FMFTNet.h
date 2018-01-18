@@ -9,8 +9,8 @@ using namespace std;
 
 #define FMFT_MTU   1400
 #define FMFT_SNIFF "sniff"
-#define FMFT_TIMEDIFF  120000  //us
-#define FMFT_TIMESNIFF 10000  //ms
+#define FMFT_TIMEDIFF  (120*1000)  //us
+#define FMFT_TIMESNIFF (10*1000*1000)  //us
 #define FMFT_LEN   (1024*256)
 
 class FMFTNet
@@ -24,16 +24,10 @@ public:
 private:
 	bool                    m_Running;
 
-	HANDLE                  m_hThreadSend;
-	unsigned int            m_uThreadIDSend;
-	static unsigned int WINAPI InitialThreadProcSend(void *pv);
-	unsigned long ThreadProcSend();
-	unsigned long PacketSend(unsigned long long PacketSize);
-
-	HANDLE                  m_hThreadRecv;
-	unsigned int            m_uThreadIDRecv;
-	static unsigned int WINAPI InitialThreadProcRecv(void *pv);
-	unsigned long ThreadProcRecv();
+	HANDLE                  m_hThread;
+	unsigned int            m_uThreadID;
+	static unsigned int WINAPI InitialThreadProc(void *pv);
+	unsigned long ThreadProc();
 
 	static int udp_output(const char *buffer, int len, IKCPCB *cb, void *user);
 	long handle_vnet_send(const char *buffer, long len);

@@ -11,26 +11,19 @@ FMFTNet::FMFTNet()
 {
 	OutputDebugStringA("FMFTNet\n");
 	m_Running = false;
+	m_hThread     = NULL;
 }
 
 FMFTNet::~FMFTNet()
 {
 	m_Running = false;
 
-	if (m_hThreadSend != NULL)
+	if (m_hThread != NULL)
 	{
-		WaitForSingleObject(m_hThreadSend, INFINITE);
-		CloseHandle(m_hThreadSend);
-		m_hThreadSend = NULL;
-		m_uThreadIDSend = 0;
-	}
-
-	if (m_hThreadRecv != NULL)
-	{
-		WaitForSingleObject(m_hThreadRecv, INFINITE);
-		CloseHandle(m_hThreadRecv);
-		m_hThreadRecv = NULL;
-		m_uThreadIDRecv = 0;
+		WaitForSingleObject(m_hThread, INFINITE);
+		CloseHandle(m_hThread);
+		m_hThread = NULL;
+		m_uThreadID = 0;
 	}
 
 	closesocket(m_udp_socket);
@@ -115,17 +108,10 @@ int FMFTNet::Start(string remote, int sniffPort, int remotePort, int localPort)
 	m_IsModify = false;
 	m_Running = true;
 
-	m_hThreadSend = (HANDLE)_beginthreadex(NULL, 0, InitialThreadProcSend, (void *)this, 0, &m_uThreadIDSend);
-	if (m_hThreadSend == NULL)
+	m_hThread = (HANDLE)_beginthreadex(NULL, 0, InitialThreadProc, (void *)this, 0, &m_uThreadID);
+	if (m_hThread == NULL)
 	{
-		fmft_log("FMFTNet _beginthreadex InitialThreadProcSend error\n");
-		return -1;
-	}
-
-	m_hThreadRecv = (HANDLE)_beginthreadex(NULL, 0, InitialThreadProcRecv, (void *)this, 0, &m_uThreadIDRecv);
-	if (m_hThreadRecv == NULL)
-	{
-		fmft_log("FMFTNet _beginthreadex InitialThreadProcRecv  error\n");
+		fmft_log("FMFTNet _beginthreadex InitialThreadProc error\n");
 		return -1;
 	}
 
@@ -135,271 +121,6 @@ int FMFTNet::Start(string remote, int sniffPort, int remotePort, int localPort)
 int FMFTNet::Stop()
 {
 	m_Running = false;
-	return 0;
-}
-
-unsigned int FMFTNet::InitialThreadProcSend(void *pv)
-{
-	FMFTNet *pThis = (FMFTNet *)pv;
-	return pThis->ThreadProcSend();
-}
-
-unsigned long FMFTNet::ThreadProcSend()
-{
-	unsigned long long total = 0;
-	OutputDebugStringA("FMFTNet start\n");
-
-	while ((m_Running == true) && (total < m_totalSize))
-	{
-		unsigned long long sendSize = 0;
-		if ((total + FMFT_LEN) <= m_totalSize)
-		{
-			sendSize = FMFT_LEN;
-		}
-		else
-		{
-			sendSize = m_totalSize - total;
-		}
-
-		int len = PacketSend(sendSize);
-		if (len >= 0)
-		{
-			total += len;
-		}
-
-		fmft_log("FMFTNet total : %lld\n", total);
-	}
-
-	OutputDebugStringA("FMFTNet finish\n");
-	return 0;
-}
-
-unsigned long FMFTNet::PacketSend(unsigned long long PacketSize)
-{
-	if (PacketSize <= 0)
-	{
-		fmft_log("FMFTNet PacketSend param error\n");
-		return -1;
-	}
-
-	struct timeval start, now;
-	unsigned long long packetTotal = 0;
-	char *payload = (char *)malloc(sizeof(unsigned char) * PacketSize);
-	if (payload == NULL)
-	{
-		fmft_log("FMFTNet malloc error\n");
-		return -1;
-	}
-
-	timeval timeout;
-	timeout.tv_sec = 0;
-	timeout.tv_usec = 10;
-	fd_set rfd;
-
-	m_rbudp = new CFMFTReliableBase();
-	if (m_rbudp == NULL)
-	{
-		fmft_log("FMFTNet m_rbudp error\n");
-		return -1;
-	}
-
-	if (m_rbudp->Init(payload, PacketSize, m_rate, m_mtu) < 0)
-	{
-		fmft_log("FMFTNet m_rbudp Init error\n");
-		return -1;
-	}
-
-	long long total = 0;
-	unsigned long long index = 0;
-	gettimeofday(&start, NULL);
-	while (m_Running == true)
-	{
-		if (GetModifyStatus() == true)
-		{
-			SetModifyStatus(false);
-			gettimeofday(&start, NULL);
-			index = 0;
-			continue;
-		}
-
-		gettimeofday(&now, NULL);
-		if (USEC(&start, &now) < (GetUsecsPerPacket() * index))
-		{
-			Sleep(1);
-		}
-		else
-		{
-			int packetSize = m_rbudp->GetPacket(payload, FMFT_LEN);
-			if (packetSize < 0)
-			{
-				fmft_log("FMFTNet GetPacket() error(%lld)\n", packetSize);
-				packetTotal = -1;
-				break;
-			}
-			else if (packetSize == 0)
-			{
-				fmft_log("FMFTNet GetPacket() finished\n");
-				packetTotal = PacketSize;
-				break;
-			}
-
-			if (((total / packetSize) % 50) == 0)
-			{
-				m_rbudp->UpdateErrorMap(0);
-			}
-
-
-			if (sendto(m_udp_socket, payload, packetSize, 0, (const struct sockaddr *)&m_udp_remoteAddr, sizeof(m_udp_remoteAddr)) < 0)
-			{
-				fmft_log("FMFTNet sendto() error\n");
-				packetTotal = -1;
-				break;
-			}
-			else
-			{
-				index++;
-				total += packetSize;
-			}
-		}
-	}
-
-	fmft_log("PacketSend : %lld, packetTotal : %lld\n", PacketSize, packetTotal);
-	delete m_rbudp;
-	m_rbudp = NULL;
-
-	delete payload;
-	payload = NULL;
-
-	return packetTotal;
-}
-
-unsigned int FMFTNet::InitialThreadProcRecv(void *pv)
-{
-	FMFTNet *pThis = (FMFTNet *)pv;
-	return pThis->ThreadProcRecv();
-}
-
-unsigned long FMFTNet::ThreadProcRecv()
-{
-	struct sockaddr_in remote;
-	int addr_len = sizeof(struct sockaddr_in);
-	char *byteRecv = (char *)malloc(sizeof(unsigned char) * m_mtu);
-	if (byteRecv == NULL)
-	{
-		OutputDebugStringA("ThreadProcRecv malloc error\n");
-		return -1;
-	}
-
-	char *log = (char *)malloc(sizeof(unsigned char) * m_mtu);
-	if (log == NULL)
-	{
-		OutputDebugStringA("ThreadProcRecv malloc error\n");
-		return -1;
-	}
-
-	m_kcp = ikcp_create(1, this);
-	if (m_kcp == NULL)
-	{
-		OutputDebugStringA("ThreadProcRecv ikcp_create error\n");
-		return -1;
-	}
-
-	m_kcp->output = FMFTNet::udp_output;
-
-	ikcp_nodelay(m_kcp, 0, 10, 0, 1, 0);
-
-	fd_set fds;
-	struct timeval tv;
-	tv.tv_sec = 0;
-	tv.tv_usec = 1000*100;
-	if (setsockopt(m_udp_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv)) < 0)
-	{
-		OutputDebugStringA("ThreadProcRecv socket option error\n");
-		return -1;
-	}
-
-	int snd = m_kcp->nsnd_buf;
-	memset(log, 0, m_mtu);
-	sprintf(log, "ThreadProcRecv start wnd:%d\n", snd);
-	OutputDebugStringA(log);
-
-	struct timeval sniff_start;
-	struct timeval sniff_stop;
-	unsigned long long usecsPerPacket_bak = GetUsecsPerPacket();
-	bool isBalance = false;
-
-	while (m_Running == true)
-	{
-		ikcp_update(m_kcp, iclock());
-		snd = m_kcp->nsnd_buf;
-		if (snd <= 0)
-		{
-			ikcp_send(m_kcp, FMFT_SNIFF, strlen(FMFT_SNIFF));
-			memset(log, 0, m_mtu);
-			sprintf(log, "send content:%s, len:%d, snd:%d\n", FMFT_SNIFF, strlen(FMFT_SNIFF), snd);
-			OutputDebugStringA(log);
-
-			gettimeofday(&sniff_start, NULL);
-		}
-
-		FD_ZERO(&fds);
-		FD_SET(m_udp_socket, &fds);
-		int ret = select(m_udp_socket, &fds, NULL, NULL, &tv);
-		if (ret == 0)
-		{
-			continue;
-		}
-		else if (ret == -1)
-		{
-			OutputDebugStringA("Error..\n");
-			break;
-		}
-
-		int recvlen = recvfrom(m_udp_socket, byteRecv, m_mtu, 0, (struct sockaddr *)&remote, &addr_len);
-		if (recvlen > 0)
-		{
-			ikcp_input(m_kcp, byteRecv, recvlen);
-			memset(log, 0, m_mtu);
-			sprintf(log, "recv len:%d\n\n", recvlen);
-			OutputDebugStringA(log);
-
-			gettimeofday(&sniff_stop, NULL);
-			long long timediff = USEC(&sniff_start, &sniff_stop);
-			memset(log, 0, m_mtu);
-			sprintf(log, "timediff : %lld\n\n", timediff);
-			OutputDebugStringA(log);
-
-			if (isBalance == false)
-			{
-				if (timediff < FMFT_TIMEDIFF)
-				{
-					usecsPerPacket_bak = GetUsecsPerPacket();
-					SetUsecsPerPacket((usecsPerPacket_bak / 2));
-				}
-				else
-				{
-					isBalance = true;
-					SetUsecsPerPacket(usecsPerPacket_bak);
-				}
-				SetModifyStatus(true);
-				memset(log, 0, m_mtu);
-				sprintf(log, "m_usecsPerPacket : %lld\n\n", GetUsecsPerPacket());
-				OutputDebugStringA(log);
-			}
-			Sleep(10000);
-		}
-		else
-		{
-			OutputDebugStringA("recv none\n");
-		}
-	}
-
-	delete byteRecv;
-	byteRecv = NULL;
-
-	delete log;
-    log = NULL;
-
 	return 0;
 }
 
@@ -447,5 +168,120 @@ bool FMFTNet::GetModifyStatus()
 int  FMFTNet::SetModifyStatus(bool status)
 {
 	m_IsModify = status;
+	return 0;
+}
+
+unsigned int FMFTNet::InitialThreadProc(void *pv)
+{
+	FMFTNet *pThis = (FMFTNet *)pv;
+	return pThis->ThreadProc();
+}
+
+unsigned long FMFTNet::ThreadProc()
+{
+	m_kcp = ikcp_create(1, this);
+	if (m_kcp == NULL)
+	{
+		OutputDebugStringA("ThreadProc ikcp_create error\n");
+		return -1;
+	}
+	m_kcp->output = FMFTNet::udp_output;
+	ikcp_nodelay(m_kcp, 0, 10, 0, 1, 0);
+
+	struct sockaddr_in remote;
+	int addr_len = sizeof(struct sockaddr_in);
+	fd_set read_fdset;
+	fd_set write_fdset;
+	struct timeval tv;
+	tv.tv_sec = 0;
+	tv.tv_usec = 10;
+	if (setsockopt(m_udp_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv)) < 0)
+	{
+		OutputDebugStringA("ThreadProc socket option error\n");
+		return -1;
+	}
+
+	struct timeval sniff_start;
+	struct timeval sniff_stop;
+	gettimeofday(&sniff_start, NULL);
+	gettimeofday(&sniff_stop, NULL);
+	long long timesniff = 0;
+
+	unsigned long long index = 0;
+	struct timeval start;
+	struct timeval now;
+	gettimeofday(&start, NULL);
+
+	OutputDebugStringA("ThreadProc start\n");
+
+	while (m_Running == true)
+	{
+		ikcp_update(m_kcp, iclock());
+		gettimeofday(&sniff_stop, NULL);
+		timesniff = USEC(&sniff_start, &sniff_stop);
+		if (timesniff > FMFT_TIMESNIFF)
+		{
+			gettimeofday(&sniff_start, NULL);
+			int snd = m_kcp->nsnd_buf;
+			if (snd <= 0)
+			{
+				ikcp_send(m_kcp, FMFT_SNIFF, strlen(FMFT_SNIFF));
+				fmft_log("send content:%s, len:%d, snd:%d\n", FMFT_SNIFF, strlen(FMFT_SNIFF), snd);
+			}
+		}
+
+		FD_ZERO(&read_fdset);
+		FD_SET(m_udp_socket, &read_fdset);
+		FD_ZERO(&write_fdset);
+		FD_SET(m_udp_socket, &write_fdset);
+
+		int ret = select(m_udp_socket + 1, &read_fdset, &write_fdset, NULL, &tv);
+		if (ret == 0)
+		{
+			continue;
+		}
+		else if (ret == -1)
+		{
+			OutputDebugStringA("ThreadProc select error\n");
+			break;
+		}
+
+		if (FD_ISSET(m_udp_socket, &read_fdset))
+		{
+			char byteRecv[1400] = { 0 };
+			int recvlen = recvfrom(m_udp_socket, byteRecv, sizeof(byteRecv), 0, (struct sockaddr *)&remote, &addr_len);
+			if (recvlen > 0)
+			{
+				ikcp_input(m_kcp, byteRecv, recvlen);
+				fmft_log("recv len : %d\n\n", recvlen);
+			}
+		}
+
+		if (FD_ISSET(m_udp_socket, &write_fdset))
+		{
+			gettimeofday(&now, NULL);
+			if (USEC(&start, &now) < (GetUsecsPerPacket() * index))
+			{
+				Sleep(1);
+			}
+			else
+			{
+				char byteSend[1400] = { 0 };
+				if (sendto(m_udp_socket, byteSend, sizeof(byteSend), 0, (const struct sockaddr *)&m_udp_remoteAddr, sizeof(m_udp_remoteAddr)) < 0)
+				{
+					OutputDebugStringA("ThreadProc sendto() error\n");
+					break;
+				}
+				else
+				{
+					index++;
+				}
+			}
+		}
+	}
+
+	OutputDebugStringA("ThreadProc stop\n");
+
+	ikcp_release(m_kcp);
 	return 0;
 }

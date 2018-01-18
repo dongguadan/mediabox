@@ -7,9 +7,9 @@
 #include <QPainter>
 #include <QtMath>
 
-#define TOTALSIZE (1024*1024*1024*1)  //(((1BYTE * 1024)K * 1024)MB * 1024)GB * num
+#define TOTALSIZE (1024*1024*1024*10)  //(((1BYTE * 1024)K * 1024)MB * 1024)GB * num
 
-#define RATE (1*1024*1)    //(1Kb/S * 1024)Mb/S * num 
+#define RATE (1*1024*2)    //(1Kb/S * 1024)Mb/S * num 
 #define MTU  (1*1400*1)    //(1BYTE * 1400)KB * num
 #define REMOTE     "10.0.15.59"
 #define SNIFFPORT 36109
