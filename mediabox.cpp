@@ -92,7 +92,7 @@ void MediaBox::slotTransfer()
 		return;
 	}
 	m_fmft_net->Init(TOTALSIZE, RATE, MTU);
-	m_fmft_net->Start(REMOTE, SNIFFPORT, REMOTEPORT, LOCALPORT);
+	m_fmft_net->Start(REMOTE, REMOTEPORT, LOCALPORT);
 
 	return;
 }

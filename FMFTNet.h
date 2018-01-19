@@ -21,7 +21,7 @@ public:
 	FMFTNet();
 	~FMFTNet();
 	int Init(unsigned long long totalSize, unsigned long long rate, int mtu);
-	int Start(string remote, int sniffPort, int remotePort, int localPort);
+	int Start(string remote, int remotePort, int localPort);
 	int Stop();
 private:
 	bool                    m_Running;

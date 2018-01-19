@@ -40,7 +40,7 @@ int FMFTNet::Init(unsigned long long totalSize, unsigned long long rate, int mtu
 	return 0;
 }
 
-int FMFTNet::Start(string remote, int sniffPort, int remotePort, int localPort)
+int FMFTNet::Start(string remote, int remotePort, int localPort)
 {
 	WSADATA wsaData;
 	int err = WSAStartup(MAKEWORD(2, 2), &wsaData);
@@ -59,13 +59,10 @@ int FMFTNet::Start(string remote, int sniffPort, int remotePort, int localPort)
 	struct hostent *phe;
 	memset(&m_udp_remoteAddr, 0, sizeof(m_udp_remoteAddr));
 	m_udp_remoteAddr.sin_family = AF_INET;
-	memset(&m_rudp_remoteAddr, 0, sizeof(m_rudp_remoteAddr));
-	m_rudp_remoteAddr.sin_family = AF_INET;
 
 	if (phe = gethostbyname(m_remote_host.c_str()))
 	{
 		memcpy(&m_udp_remoteAddr.sin_addr, phe->h_addr, phe->h_length);
-		memcpy(&m_rudp_remoteAddr.sin_addr, phe->h_addr, phe->h_length);
 	}
 	else if ((m_udp_remoteAddr.sin_addr.s_addr = inet_addr(m_remote_host.c_str())) == INADDR_NONE)
 	{
@@ -78,8 +75,6 @@ int FMFTNet::Start(string remote, int sniffPort, int remotePort, int localPort)
 		return -1;
 	}
 	m_udp_remoteAddr.sin_port = htons(m_udp_remote_port);
-	m_rudp_remoteAddr.sin_port = htons(sniffPort);
-
 
 	if ((m_udp_socket = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
 	{
@@ -144,7 +139,7 @@ int FMFTNet::udp_output(const char *buffer, int len, IKCPCB *cb, void *user)
 
 long FMFTNet::handle_vnet_send(const char *buffer, long len)
 {
-	if (sendto(m_udp_socket, buffer, len, 0, (const struct sockaddr *)&m_rudp_remoteAddr, sizeof(m_rudp_remoteAddr)) < 0)
+	if (sendto(m_udp_socket, buffer, len, 0, (const struct sockaddr *)&m_udp_remoteAddr, sizeof(m_udp_remoteAddr)) < 0)
 	{
 		fmft_log("FMFTNet handle_vnet_send() error\n");
 		return -1;
@@ -274,7 +269,7 @@ unsigned long FMFTNet::ThreadProc()
 			gettimeofday(&now, NULL);
 			if (USEC(&start, &now) < (GetUsecsPerPacket() * index))
 			{
-				Sleep(1);
+				fmft_sleep(1);
 			}
 			else
 			{
@@ -405,7 +400,7 @@ int  FMFTNet::ProcessSniff()
 				{
 					break;
 				}
-				Sleep(1000);
+				fmft_sleep(1000);
 			}
 		}
 

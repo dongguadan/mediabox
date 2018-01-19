@@ -111,7 +111,7 @@ void CFMFTReliableBase::initErrorBitmap()
 {
 	int i;
 	int startOfLastByte = m_totalNumberOfPackets - (m_sizeofErrorBitmap - 2) * 8;
-	char bits[8] = { 0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080 };
+	unsigned char bits[8] = { 0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080 };
 
 	for (i = 0; i < m_sizeofErrorBitmap; i++)
 	{
@@ -159,7 +159,7 @@ int  CFMFTReliableBase::ptohseq(int origseq)
 void CFMFTReliableBase::updateErrorBitmap(long long seq)
 {
 	long long index_in_list, offset_in_index;
-	char bits[8] = { 0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080 };
+	unsigned char bits[8] = { 0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080 };
 	if (m_peerswap)
 	{
 		seq = swab32(seq);
@@ -188,7 +188,7 @@ int CFMFTReliableBase::updateHashTable()
 {
 	int count = 0;
 	int i, j;
-	char bits[8] = { 0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080 };
+	unsigned char bits[8] = { 0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080 };
 
 	for (i = 1; i<m_sizeofErrorBitmap; i++)
 	{
@@ -272,6 +272,7 @@ int CFMFTReliableBase::UpdateErrorMap(long long seq)
 
 	srand((unsigned)time(0));
 	seq = m_hashTable[(rand() % m_remainNumberOfPackets)];
+	seq = ptohseq(seq);
 	updateErrorBitmap(seq);
 	m_remainNumberOfPackets = updateHashTable();
 
