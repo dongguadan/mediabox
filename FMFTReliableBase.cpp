@@ -269,13 +269,13 @@ int CFMFTReliableBase::UpdateErrorMap(long long seq)
 	updateErrorBitmap(seq);
 	m_remainNumberOfPackets = updateHashTable();
 
-	fmft_log("CFMFTReliableBase::UpdateErrorMap : group(%d)\n", m_group);
-	fmft_log("CFMFTReliableBase::UpdateErrorMap : seq(%d)\n", seq);
-	fmft_log("CFMFTReliableBase::UpdateErrorMap : m_remainNumberOfPackets(%d)\n\n", m_remainNumberOfPackets);
+	//fmft_log("CFMFTReliableBase::UpdateErrorMap : group(%d)\n", m_group);
+	//fmft_log("CFMFTReliableBase::UpdateErrorMap : seq(%d)\n", seq);
+	//fmft_log("CFMFTReliableBase::UpdateErrorMap : m_remainNumberOfPackets(%d)\n\n", m_remainNumberOfPackets);
 
-	printf("CFMFTReliableBase::UpdateErrorMap : group(%d)\n", m_group);
-	printf("CFMFTReliableBase::UpdateErrorMap : seq(%d)\n", seq);
-	printf("CFMFTReliableBase::UpdateErrorMap : m_remainNumberOfPackets(%d)\n\n", m_remainNumberOfPackets);
+	//printf("CFMFTReliableBase::UpdateErrorMap : group(%d)\n", m_group);
+	//printf("CFMFTReliableBase::UpdateErrorMap : seq(%d)\n", seq);
+	//printf("CFMFTReliableBase::UpdateErrorMap : m_remainNumberOfPackets(%d)\n\n", m_remainNumberOfPackets);
 
 	m_running = true;
 	return 0;

@@ -264,22 +264,20 @@ unsigned long FMFTNet::ThreadProc()
 				recvlen = ikcp_recv(m_kcp, byteRecv, sizeof(byteRecv));
 				if (recvlen > 0)
 				{
-					fmft_log("\n\nFMFTNet::ThreadProc ikcp_recv len : %d\n", recvlen);
-					for (int i = 0; i <= m_group; i++)
+					_rbudpHeader header;
+					memcpy((char *)&header, byteRecv, sizeof(header));
+					fmft_log("\n\nFMFTNet::ThreadProc ikcp_recv len : %d, group : %d\n", recvlen, header.group);
+					m_rbudp = GetRBUDP(header.group);
+					if (m_rbudp == NULL)
 					{
-						m_rbudp = GetRBUDP(i);
-						if (m_rbudp == NULL)
-						{
-							continue;
-						}
-						unsigned long long timediff = USEC(&start, &now);
-						fmft_log("index:%lld\n", index);
-						fmft_log("timediff:%lld\n", timediff);
-						fmft_log("UsecsPerPacket:%lld\n", GetUsecsPerPacket());
-						m_rbudp->SetErrorMap(byteRecv, recvlen);
-						//m_rbudp->UpdateErrorMap(0);
-						break;
+						continue;
 					}
+					unsigned long long timediff = USEC(&start, &now);
+					fmft_log("index:%lld\n", index);
+					fmft_log("timediff:%lld\n", timediff);
+					fmft_log("UsecsPerPacket:%lld\n", GetUsecsPerPacket());
+					m_rbudp->SetErrorMap(byteRecv + sizeof(header), recvlen - sizeof(header));
+					//m_rbudp->UpdateErrorMap(0);
 				}
 			}
 		}
@@ -318,6 +316,7 @@ unsigned long FMFTNet::ThreadProc()
 				if (m_rbudp->GetCursor() == 0)
 				{
 					_endOfUdp endup;
+					endup.round = m_rbudp->GetID();
 					ikcp_send(m_kcp, (char *)&endup, sizeof(endup));
 				}
 			}
