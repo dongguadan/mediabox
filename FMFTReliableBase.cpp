@@ -1,5 +1,6 @@
 #include "FMFTReliableBase.h"
 #include "FMFTFunction.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctime>
@@ -264,14 +265,6 @@ int CFMFTReliableBase::GetCursor()
 
 int CFMFTReliableBase::UpdateErrorMap(long long seq)
 {
-	if (seq >= m_remainNumberOfPackets)
-	{
-		fmft_log("CFMFTReliableBase::UpdateErrorMap error group(%d)\n", m_group);
-		return -1;
-	}
-
-	srand((unsigned)time(0));
-	seq = m_hashTable[(rand() % m_remainNumberOfPackets)];
 	seq = ptohseq(seq);
 	updateErrorBitmap(seq);
 	m_remainNumberOfPackets = updateHashTable();
@@ -279,8 +272,40 @@ int CFMFTReliableBase::UpdateErrorMap(long long seq)
 	fmft_log("CFMFTReliableBase::UpdateErrorMap : group(%d)\n", m_group);
 	fmft_log("CFMFTReliableBase::UpdateErrorMap : seq(%d)\n", seq);
 	fmft_log("CFMFTReliableBase::UpdateErrorMap : m_remainNumberOfPackets(%d)\n\n", m_remainNumberOfPackets);
+
+	printf("CFMFTReliableBase::UpdateErrorMap : group(%d)\n", m_group);
+	printf("CFMFTReliableBase::UpdateErrorMap : seq(%d)\n", seq);
+	printf("CFMFTReliableBase::UpdateErrorMap : m_remainNumberOfPackets(%d)\n\n", m_remainNumberOfPackets);
+
 	m_running = true;
 	return 0;
+}
+
+int CFMFTReliableBase::GetErrorMap(char *buffer, int bufSize)
+{
+	if (bufSize < m_sizeofErrorBitmap)
+	{
+		fmft_log("CFMFTReliableBase::GetErrorMap error\n");
+		return -1;
+	}
+	memcpy(buffer, m_errorBitmap, m_sizeofErrorBitmap);
+	return m_sizeofErrorBitmap;
+}
+
+int CFMFTReliableBase::SetErrorMap(char *buffer, int bufSize)
+{
+	if (bufSize > m_sizeofErrorBitmap)
+	{
+		fmft_log("CFMFTReliableBase::SetErrorMap error\n");
+		return -1;
+	}
+	memcpy(m_errorBitmap, buffer, m_sizeofErrorBitmap);
+	m_remainNumberOfPackets = updateHashTable();
+
+	fmft_log("CFMFTReliableBase::UpdateErrorMap : group(%d)\n", m_group);
+	fmft_log("CFMFTReliableBase::UpdateErrorMap : m_remainNumberOfPackets(%d)\n\n", m_remainNumberOfPackets);
+	m_running = true;
+	return m_sizeofErrorBitmap;
 }
 
 int CFMFTReliableBase::GetID()

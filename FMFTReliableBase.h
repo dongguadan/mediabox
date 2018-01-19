@@ -7,6 +7,12 @@ struct _rbudpHeader
 	int group;
 };
 
+struct _endOfUdp
+{
+	int round;
+	char end[3];
+};
+
 class CFMFTReliableBase
 {
 public:
@@ -19,6 +25,8 @@ public:
 	bool GetStatus();
 	int GetRemainNumberOfPackets();
 	int UpdateErrorMap(long long seq);
+	int GetErrorMap(char *buffer, int bufSize);
+	int SetErrorMap(char *buffer, int bufSize);
 private:
 	char    *m_mainBuffer;
 	int     m_dataSize;

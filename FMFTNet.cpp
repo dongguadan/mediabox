@@ -208,7 +208,7 @@ unsigned long FMFTNet::ThreadProc()
 		return -1;
 	}
 
-	ProcessSniff();
+	//ProcessSniff();
 
 	unsigned long long index = 0;
 	struct timeval start;
@@ -217,6 +217,7 @@ unsigned long FMFTNet::ThreadProc()
 
 	while (m_Running == true)
 	{
+		ikcp_update(m_kcp, iclock());
 		if (m_rbudp_map.size() < FMFT_PACKET_MAX_NUM)
 		{
 			fmft_log("insert gropu : %d\n", m_group);
@@ -260,7 +261,26 @@ unsigned long FMFTNet::ThreadProc()
 			if (recvlen > 0)
 			{
 				ikcp_input(m_kcp, byteRecv, recvlen);
-				fmft_log("FMFTNet::ThreadProc recv len : %d\n\n", recvlen);
+				recvlen = ikcp_recv(m_kcp, byteRecv, sizeof(byteRecv));
+				if (recvlen > 0)
+				{
+					fmft_log("\n\nFMFTNet::ThreadProc ikcp_recv len : %d\n", recvlen);
+					for (int i = 0; i <= m_group; i++)
+					{
+						m_rbudp = GetRBUDP(i);
+						if (m_rbudp == NULL)
+						{
+							continue;
+						}
+						unsigned long long timediff = USEC(&start, &now);
+						fmft_log("index:%lld\n", index);
+						fmft_log("timediff:%lld\n", timediff);
+						fmft_log("UsecsPerPacket:%lld\n", GetUsecsPerPacket());
+						m_rbudp->SetErrorMap(byteRecv, recvlen);
+						//m_rbudp->UpdateErrorMap(0);
+						break;
+					}
+				}
 			}
 		}
 
@@ -273,33 +293,7 @@ unsigned long FMFTNet::ThreadProc()
 			}
 			else
 			{
-				/* simulate the server response */
-				bool find = false;
-				for (int i = 0; i <= m_group; i++)
-				{
-					m_rbudp = GetRBUDP(i);
-					if (m_rbudp == NULL)
-					{
-						continue;
-					}
-					find = true;
-					if (m_rbudp->GetCursor() == 0)
-					{
-						unsigned long long timediff = USEC(&start, &now);
-						fmft_log("index:%lld\n", index);
-						fmft_log("timediff:%lld\n", timediff);
-						fmft_log("UsecsPerPacket:%lld\n", GetUsecsPerPacket());
-						m_rbudp->UpdateErrorMap(0);
-					}
-					break;
-				}
-				if (find == false)
-				{
-					OutputDebugStringA("FMFTNet::ThreadProc all finished\n");
-					break;
-				}
-				/********************************/
-
+				index++;
 				m_rbudp = GetRBUDP();
 				if (m_rbudp == NULL)
 				{
@@ -320,9 +314,11 @@ unsigned long FMFTNet::ThreadProc()
 					OutputDebugStringA("FMFTNet::ThreadProc sendto() error\n");
 					break;
 				}
-				else
+
+				if (m_rbudp->GetCursor() == 0)
 				{
-					index++;
+					_endOfUdp endup;
+					ikcp_send(m_kcp, (char *)&endup, sizeof(endup));
 				}
 			}
 		}
