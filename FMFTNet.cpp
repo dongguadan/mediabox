@@ -105,7 +105,7 @@ int FMFTNet::Start(string remote, int remotePort, int localPort)
 	m_group = 0;
 	gettimeofday(&m_sniff_start, NULL);
 	gettimeofday(&m_sniff_stop, NULL);
-
+	gettimeofday(&m_start, NULL);
 	m_hThread = (HANDLE)_beginthreadex(NULL, 0, InitialThreadProc, (void *)this, 0, &m_uThreadID);
 	if (m_hThread == NULL)
 	{
@@ -218,25 +218,6 @@ unsigned long FMFTNet::ThreadProc()
 	while (m_Running == true)
 	{
 		ikcp_update(m_kcp, iclock());
-		if (m_rbudp_map.size() < FMFT_PACKET_MAX_NUM)
-		{
-			fmft_log("insert gropu : %d\n", m_group);
-			m_rbudp = new CFMFTReliableBase();
-			if (m_rbudp == NULL)
-			{
-				OutputDebugStringA("FMFTNet::ThreadProc m_rbudp error\n");
-				return -1;
-			}
-
-			if (m_rbudp->Init(m_group, group, FMFT_LEN, m_rate, m_mtu) < 0)
-			{
-				OutputDebugStringA("FMFTNet::ThreadProc m_rbudp init error\n");
-				return -1;
-			}
-
-			InsertRBUDP(m_rbudp->GetID(), m_rbudp);
-			m_group++;
-		}
 
 		FD_ZERO(&read_fdset);
 		FD_SET(m_udp_socket, &read_fdset);
@@ -273,9 +254,9 @@ unsigned long FMFTNet::ThreadProc()
 						continue;
 					}
 					unsigned long long timediff = USEC(&start, &now);
-					fmft_log("index:%lld\n", index);
-					fmft_log("timediff:%lld\n", timediff);
-					fmft_log("UsecsPerPacket:%lld\n", GetUsecsPerPacket());
+					//fmft_log("index:%lld\n", index);
+					//fmft_log("timediff:%lld\n", timediff);
+					//fmft_log("UsecsPerPacket:%lld\n", GetUsecsPerPacket());
 					m_rbudp->SetErrorMap(byteRecv + sizeof(header), recvlen - sizeof(header));
 					//m_rbudp->UpdateErrorMap(0);
 				}
@@ -295,7 +276,29 @@ unsigned long FMFTNet::ThreadProc()
 				m_rbudp = GetRBUDP();
 				if (m_rbudp == NULL)
 				{
-					continue;
+					if (m_rbudp_map.size() < FMFT_PACKET_MAX_NUM)
+					{
+						fmft_log("insert gropu : %d\n", m_group);
+						m_rbudp = new CFMFTReliableBase();
+						if (m_rbudp == NULL)
+						{
+							OutputDebugStringA("FMFTNet::ThreadProc m_rbudp error\n");
+							return -1;
+						}
+
+						if (m_rbudp->Init(m_group, group, FMFT_LEN, m_rate, m_mtu) < 0)
+						{
+							OutputDebugStringA("FMFTNet::ThreadProc m_rbudp init error\n");
+							return -1;
+						}
+
+						InsertRBUDP(m_rbudp->GetID(), m_rbudp);
+						m_group++;
+					}
+					else
+					{
+						continue;
+					}
 				}
 
 				int packetlen = m_rbudp->GetPacket(group, FMFT_LEN);
@@ -303,7 +306,10 @@ unsigned long FMFTNet::ThreadProc()
 				{
 					int id = m_rbudp->GetID();
 					RemoveRBUDP(id);
+					gettimeofday(&m_stop, NULL);
 					fmft_log("FMFTNet::ThreadProc m_rbudp(%d) finished\n", id);
+					unsigned long long timeCost = USEC(&m_start, &m_stop) / 1000;
+					fmft_log("FMFTNet::ThreadProc m_rbudp(%d) cost : %lld\n", id, timeCost);
 					continue;
 				}
 
@@ -448,6 +454,11 @@ CFMFTReliableBase* FMFTNet::GetRBUDP(int id)
 
 int FMFTNet::InsertRBUDP(int id, CFMFTReliableBase* pRBUDP)
 {
+	map<int, CFMFTReliableBase*>::iterator iter = m_rbudp_map.find(id);
+	if (iter != m_rbudp_map.end())
+	{
+		return 0;
+	}
 	m_rbudp_map[id] = pRBUDP;
 	return 0;
 }
@@ -465,4 +476,14 @@ int FMFTNet::RemoveRBUDP(int id)
 	}
 
 	return 0;
+}
+
+bool FMFTNet::IsRBUDPExist(int id)
+{
+	map<int, CFMFTReliableBase*>::iterator iter = m_rbudp_map.find(id);
+	if (iter != m_rbudp_map.end())
+	{
+		return true;
+	}
+	return false;
 }

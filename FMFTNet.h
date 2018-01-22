@@ -13,7 +13,7 @@ using namespace std;
 #define FMFT_TIMEDIFF  (120*1000)  //us
 #define FMFT_TIMESNIFF (10*1000*1000)  //us
 #define FMFT_LEN   (1024*256)
-#define FMFT_PACKET_MAX_NUM  1
+#define FMFT_PACKET_MAX_NUM  5
 
 class FMFTNet
 {
@@ -45,7 +45,7 @@ private:
 	CFMFTReliableBase* GetRBUDP(int id);
 	int InsertRBUDP(int id, CFMFTReliableBase* pRBUDP);
 	int RemoveRBUDP(int id);
-
+	bool IsRBUDPExist(int id);
 	int  ProcessSniff();
 
 private:
@@ -68,7 +68,8 @@ private:
 	bool              m_IsModify;
 	struct timeval    m_sniff_start;
 	struct timeval    m_sniff_stop;
-
+	struct timeval    m_start;
+	struct timeval    m_stop;
 	int  m_group;
 };
 
