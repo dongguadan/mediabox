@@ -24,7 +24,7 @@ public:
 	int GetID();
 	bool GetStatus();
 	int GetRemainNumberOfPackets();
-	int UpdateErrorMap(long long seq);
+	int UpdateErrorMap(long long seq, char *buffer, int bufSize);
 	int GetErrorMap(char *buffer, int bufSize);
 	int SetErrorMap(char *buffer, int bufSize);
 private:

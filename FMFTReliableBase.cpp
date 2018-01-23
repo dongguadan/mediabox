@@ -263,11 +263,13 @@ int CFMFTReliableBase::GetCursor()
 	return m_cursor;
 }
 
-int CFMFTReliableBase::UpdateErrorMap(long long seq)
+int CFMFTReliableBase::UpdateErrorMap(long long seq, char *buffer, int bufSize)
 {
 	seq = ptohseq(seq);
 	updateErrorBitmap(seq);
 	m_remainNumberOfPackets = updateHashTable();
+
+	memcpy(m_mainBuffer + (seq*m_payloadSize), buffer, bufSize);
 
 	//fmft_log("CFMFTReliableBase::UpdateErrorMap : group(%d)\n", m_group);
 	//fmft_log("CFMFTReliableBase::UpdateErrorMap : seq(%d)\n", seq);

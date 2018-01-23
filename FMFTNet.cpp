@@ -201,6 +201,7 @@ unsigned long FMFTNet::ThreadProc()
 
 	OutputDebugStringA("FMFTNet::ThreadProc start\n");
 
+	char sendbuf[FMFT_LEN] = { 0 };
 	char *group = (char *)malloc(sizeof(char) * FMFT_LEN);
 	if (group == NULL)
 	{
@@ -254,11 +255,7 @@ unsigned long FMFTNet::ThreadProc()
 						continue;
 					}
 					unsigned long long timediff = USEC(&start, &now);
-					//fmft_log("index:%lld\n", index);
-					//fmft_log("timediff:%lld\n", timediff);
-					//fmft_log("UsecsPerPacket:%lld\n", GetUsecsPerPacket());
 					m_rbudp->SetErrorMap(byteRecv + sizeof(header), recvlen - sizeof(header));
-					//m_rbudp->UpdateErrorMap(0);
 				}
 			}
 		}
@@ -278,7 +275,7 @@ unsigned long FMFTNet::ThreadProc()
 				{
 					if (m_rbudp_map.size() < FMFT_PACKET_MAX_NUM)
 					{
-						fmft_log("insert gropu : %d\n", m_group);
+						fmft_log("insert group : %d\n", m_group);
 						m_rbudp = new CFMFTReliableBase();
 						if (m_rbudp == NULL)
 						{
@@ -301,7 +298,8 @@ unsigned long FMFTNet::ThreadProc()
 					}
 				}
 
-				int packetlen = m_rbudp->GetPacket(group, FMFT_LEN);
+				memset(sendbuf, 0, FMFT_LEN);
+				int packetlen = m_rbudp->GetPacket(sendbuf, FMFT_LEN);
 				if (packetlen <= 0)
 				{
 					int id = m_rbudp->GetID();
@@ -313,7 +311,7 @@ unsigned long FMFTNet::ThreadProc()
 					continue;
 				}
 
-				if (sendto(m_udp_socket, group, packetlen, 0, (const struct sockaddr *)&m_udp_remoteAddr, sizeof(m_udp_remoteAddr)) < 0)
+				if (sendto(m_udp_socket, sendbuf, packetlen, 0, (const struct sockaddr *)&m_udp_remoteAddr, sizeof(m_udp_remoteAddr)) < 0)
 				{
 					OutputDebugStringA("FMFTNet::ThreadProc sendto() error\n");
 					break;
