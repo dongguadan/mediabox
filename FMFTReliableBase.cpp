@@ -7,7 +7,7 @@
 
 CFMFTReliableBase::CFMFTReliableBase()
 {
-	fmft_log("CFMFTReliableBase\n");
+	//fmft_log("CFMFTReliableBase\n");
 	return;
 }
 
@@ -18,7 +18,7 @@ CFMFTReliableBase::~CFMFTReliableBase()
 		delete m_mainBuffer;
 		m_mainBuffer = NULL;
 	}
-	fmft_log("~CFMFTReliableBase\n");
+	//fmft_log("~CFMFTReliableBase\n");
 	return;
 }
 
@@ -304,8 +304,8 @@ int CFMFTReliableBase::SetErrorMap(char *buffer, int bufSize)
 	memcpy(m_errorBitmap, buffer, m_sizeofErrorBitmap);
 	m_remainNumberOfPackets = updateHashTable();
 
-	fmft_log("CFMFTReliableBase::UpdateErrorMap : group(%d)\n", m_group);
-	fmft_log("CFMFTReliableBase::UpdateErrorMap : m_remainNumberOfPackets(%d)\n\n", m_remainNumberOfPackets);
+	//fmft_log("CFMFTReliableBase::UpdateErrorMap : group(%d)\n", m_group);
+	//fmft_log("CFMFTReliableBase::UpdateErrorMap : m_remainNumberOfPackets(%d)\n\n", m_remainNumberOfPackets);
 	m_running = true;
 	return m_sizeofErrorBitmap;
 }

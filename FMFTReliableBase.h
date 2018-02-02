@@ -1,15 +1,21 @@
 #ifndef _FMFTRELIABLEBASE_H
 #define _FMFTRELIABLEBASE_H
 
+#define RBTYPE_RAW  0
+#define RBTYPE_END  1
+#define RBTYPE_MAP  2
+
 struct _rbudpHeader
 {
 	int seq;
 	int group;
+	int type;
 };
 
 struct _endOfUdp
 {
 	int round;
+	int group;
 	char end[3];
 };
 

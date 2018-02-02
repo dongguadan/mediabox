@@ -192,7 +192,7 @@ unsigned long FMFTNet::ThreadProc()
 	fd_set write_fdset;
 	struct timeval tv;
 	tv.tv_sec = 0;
-	tv.tv_usec = 10;
+	tv.tv_usec = 5;
 	if (setsockopt(m_udp_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv)) < 0)
 	{
 		OutputDebugStringA("FMFTNet::ThreadProc socket option error\n");
@@ -248,7 +248,7 @@ unsigned long FMFTNet::ThreadProc()
 				{
 					_rbudpHeader header;
 					memcpy((char *)&header, byteRecv, sizeof(header));
-					fmft_log("\n\nFMFTNet::ThreadProc ikcp_recv len : %d, group : %d\n", recvlen, header.group);
+					//fmft_log("\n\nFMFTNet::ThreadProc ikcp_recv len : %d, group : %d\n", recvlen, header.group);
 					m_rbudp = GetRBUDP(header.group);
 					if (m_rbudp == NULL)
 					{
@@ -275,7 +275,7 @@ unsigned long FMFTNet::ThreadProc()
 				{
 					if (m_rbudp_map.size() < FMFT_PACKET_MAX_NUM)
 					{
-						fmft_log("insert group : %d\n", m_group);
+						//fmft_log("insert group : %d\n", m_group);
 						m_rbudp = new CFMFTReliableBase();
 						if (m_rbudp == NULL)
 						{
@@ -304,10 +304,10 @@ unsigned long FMFTNet::ThreadProc()
 				{
 					int id = m_rbudp->GetID();
 					RemoveRBUDP(id);
-					gettimeofday(&m_stop, NULL);
-					fmft_log("FMFTNet::ThreadProc m_rbudp(%d) finished\n", id);
-					unsigned long long timeCost = USEC(&m_start, &m_stop) / 1000;
-					fmft_log("FMFTNet::ThreadProc m_rbudp(%d) cost : %lld\n", id, timeCost);
+					//gettimeofday(&m_stop, NULL);
+					//fmft_log("FMFTNet::ThreadProc m_rbudp(%d) finished\n", id);
+					//unsigned long long timeCost = USEC(&m_start, &m_stop) / 1000;
+					//fmft_log("FMFTNet::ThreadProc m_rbudp(%d) cost : %lld\n", id, timeCost);
 					continue;
 				}
 
@@ -320,7 +320,7 @@ unsigned long FMFTNet::ThreadProc()
 				if (m_rbudp->GetCursor() == 0)
 				{
 					_endOfUdp endup;
-					endup.round = m_rbudp->GetID();
+					endup.group = m_rbudp->GetID();
 					ikcp_send(m_kcp, (char *)&endup, sizeof(endup));
 				}
 			}
